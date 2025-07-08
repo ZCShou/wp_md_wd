@@ -1,0 +1,7 @@
+markdownify
+python-docx
+markdown2
+requests
+deep-translator
+beautifulsoup4
+lxml
