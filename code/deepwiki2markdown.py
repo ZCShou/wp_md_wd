@@ -476,7 +476,7 @@ def process_node(node: Any) -> str:
             
             # 特殊处理：源码文件链接是 文件名 + 行号 格式
             if re.search(r'#L(\d+)(?:-L(\d+))?$', href):
-                format_str = lambda s: f"{s.split()[0]} L{s.split()[-1].replace('-', '-L')}"
+                format_str = lambda s: f"{s.split()[0]}(L{s.split()[-1].replace('-', ' - L')})&emsp;"
                 text = format_str(text)
             
             if href:
