@@ -1,7 +1,12 @@
+import os
 import re
 import json
+import time
 from bs4 import BeautifulSoup
-from typing import Dict, List, Tuple, Optional, Set, Any
+from typing import Dict, List, Optional, Any
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from code.printf import printf
 
 def convert_flowchart_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optional[str]:
     """将流程图 SVG 转换为 Mermaid 文本"""
@@ -614,7 +619,135 @@ def process_node(node: Any) -> str:
     
     return result_md
 
-def deepwiki2markdown(html_content: str) -> str:
+# def get_page_source(url):
+#     """
+#     使用 Selenium 获取指定 URL 的网页源码。
+
+#     Args:
+#         url (str): 要获取源码的网页 URL。
+
+#     Returns:
+#         str: 网页的完整 HTML 源码，如果发生错误则返回 None。
+#     """
+#     # 配置 Chrome 选项 (可选)：例如，无头模式运行
+#     chrome_options = Options()
+#     # 禁用所有日志输出
+#     chrome_options.add_argument('--log-level=3')  # 0=INFO, 1=WARNING, 2=ERROR, 3=FATAL
+#     chrome_options.add_argument('--disable-logging')  # 禁用日志
+#     chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])  # 排除日志开关
+#     # 禁用控制台输出
+#     chrome_options.add_argument('--disable-dev-shm-usage')
+#     chrome_options.add_argument('--no-sandbox')
+#     chrome_options.add_argument('--disable-gpu')
+#     chrome_options.add_argument('--headless')  # 无头模式也会减少输出
+#     # 指定 ChromeDriver 的路径
+#     # 如果您将 chromedriver 放在系统 PATH 中，则无需指定 service_executable_path
+#     # service = Service(executable_path='/path/to/your/chromedriver') # 替换为您的chromedriver路径
+#     # driver = webdriver.Chrome(service=service, options=chrome_options)
+    
+#     # 如果 chromedriver 在 PATH 中，可以直接这样初始化
+#     driver = webdriver.Chrome(options=chrome_options)
+
+#     try:
+#         # 打开网页
+#         driver.get(url)
+
+#         # 等待页面加载完成 (可选，根据页面复杂度调整)
+#         # 您可以使用显式等待来等待某个元素出现，或者简单地等待几秒
+#         time.sleep(3) # 简单等待3秒，确保页面内容加载
+
+#         # 获取网页源码
+#         return driver.page_source
+
+#     except Exception as e:
+#         printf(f"An error occurred: {e}")
+#         return None
+#     finally:
+#         # 关闭浏览器
+#         if driver:
+#             driver.quit()
+
+def deepwiki2markdown(url: str, output_path: str) -> str:
+    # 配置 Chrome 选项 (可选)：例如，无头模式运行
+    chrome_options = Options()
+    # # 禁用所有日志输出
+    # chrome_options.add_argument('--log-level=3')  # 0=INFO, 1=WARNING, 2=ERROR, 3=FATAL
+    # chrome_options.add_argument('--disable-logging')  # 禁用日志
+    # chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])  # 排除日志开关
+    # 禁用控制台输出
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--headless')  # 无头模式也会减少输出
+    # 指定 ChromeDriver 的路径
+    # 如果您将 chromedriver 放在系统 PATH 中，则无需指定 service_executable_path
+    # service = Service(executable_path='/path/to/your/chromedriver') # 替换为您的chromedriver路径
+    # driver = webdriver.Chrome(service=service, options=chrome_options)
+    
+    # 如果 chromedriver 在 PATH 中，可以直接这样初始化
+    driver = webdriver.Chrome(options=chrome_options)
+
+    try:
+        # 打开网页
+        driver.get(url)
+
+        # # 等待页面加载完成 (可选，根据页面复杂度调整)。可以使用显式等待来等待某个元素出现，或者简单地等待几秒
+        # time.sleep(3) # 简单等待3秒，确保页面内容加载
+
+        # 一个 URL 对应多个篇文章，我们用一个目录存放
+        pdir = url.split('/')[-1]
+        os.makedirs(f"{output_path}/{pdir}", exist_ok=True)
+
+        # 获取侧边栏目录，每一个目录项都是一个页面，我们需要依次处理
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        sidebar = soup.select_one('.border-r-border')
+        ul_elements = sidebar.find_all('ul')
+        urls = []
+        filenames = []
+        for ul in ul_elements:
+            # 查找 ul 下的所有直接 li 子元素
+            li_elements = ul.find_all('li', recursive=False)
+            for li in li_elements:
+                # 查找li中的第一个a元素
+                a_element = li.find('a')
+                if a_element and a_element.get('href'):
+                    href = a_element.get('href')
+                    text = a_element.get_text(strip=True)
+                    filenames.append(text)
+                    urls.append(url + '/' + href.split('/')[-1])
+        # 开始处理当前 URL 下所有页面（其中，第一个目录与基础 URL 实际是一个页面）
+        for url, filename in zip(urls, filenames):
+            # 打开网页
+            driver.get(url)
+
+            # # 等待页面加载完成 (可选，根据页面复杂度调整)。可以使用显式等待来等待某个元素出现，或者简单地等待几秒
+            # time.sleep(3) # 简单等待3秒，确保页面内容加载
+            
+            # 主内容
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            content = soup.select_one(".container > div:nth-child(2) .prose") or \
+                    soup.select_one(".container > div:nth-child(2) .prose-custom") or \
+                    soup.select_one(".container > div:nth-child(2)") or \
+                    soup.body
+            
+            markdown = ''.join(process_node(child) for child in content.children)
+            markdown = re.sub(r'\n{3,}', '\n\n', markdown.strip())
+            
+            markdown_name = f"{filename}.md"
+            md_path = os.path.join(f"{output_path}/{pdir}", markdown_name)
+            with open(md_path, 'w', encoding='utf-8') as f:
+                f.write(markdown)
+            printf(f"保存: {md_path}")
+
+    except Exception as e:
+        printf(f"An error occurred: {e}")
+        return None
+    finally:
+        # 关闭浏览器
+        if driver:
+            driver.quit()
+
+def deepwiki2markdown_1(html_content: str) -> str:
     """将 HTML 内容转换为 Markdown"""
     soup = BeautifulSoup(html_content, 'html.parser')
     

@@ -7,60 +7,11 @@ import pandas as pd
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import logging
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from code.deepwiki2markdown import deepwiki2markdown
 from code.translationmarkdown import translate_content
 from code.printf import printf
-
-def get_page_source(url):
-    """
-    使用 Selenium 获取指定 URL 的网页源码。
-
-    Args:
-        url (str): 要获取源码的网页 URL。
-
-    Returns:
-        str: 网页的完整 HTML 源码，如果发生错误则返回 None。
-    """
-    # 配置 Chrome 选项 (可选)：例如，无头模式运行
-    chrome_options = Options()
-    # 禁用所有日志输出
-    chrome_options.add_argument('--log-level=3')  # 0=INFO, 1=WARNING, 2=ERROR, 3=FATAL
-    chrome_options.add_argument('--disable-logging')  # 禁用日志
-    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])  # 排除日志开关
-    # 禁用控制台输出
-    chrome_options.add_argument('--disable-dev-shm-usage')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--headless')  # 无头模式也会减少输出
-    # 指定 ChromeDriver 的路径
-    # 如果您将 chromedriver 放在系统 PATH 中，则无需指定 service_executable_path
-    # service = Service(executable_path='/path/to/your/chromedriver') # 替换为您的chromedriver路径
-    # driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-    # 如果 chromedriver 在 PATH 中，可以直接这样初始化
-    driver = webdriver.Chrome(options=chrome_options)
-
-    try:
-        # 打开网页
-        driver.get(url)
-
-        # 等待页面加载完成 (可选，根据页面复杂度调整)
-        # 您可以使用显式等待来等待某个元素出现，或者简单地等待几秒
-        time.sleep(3) # 简单等待3秒，确保页面内容加载
-
-        # 获取网页源码
-        return driver.page_source
-
-    except Exception as e:
-        printf(f"An error occurred: {e}")
-        return None
-    finally:
-        # 关闭浏览器
-        if driver:
-            driver.quit()
 
 def create_table_in_doc(doc, table_lines):
     """在 Word 文档中创建表格"""
@@ -218,16 +169,8 @@ def main():
     for url in urls:
         try:
             printf(f"提取: {url}")
-            page_source = get_page_source(url)
             # 递归处理 HTML 元素并转换为 Markdown
-            markdown = deepwiki2markdown(page_source)
-            
-            filename = f"{url.split('/')[-1]}.md"
-            md_path = os.path.join('data/files_markdown', filename)
-            with open(md_path, 'w', encoding='utf-8') as f:
-                f.write(markdown)
-            
-            printf(f"保存: {md_path}")
+            deepwiki2markdown(url, 'data/files_markdown')
             markdown_num += 1
         except requests.exceptions.RequestException as e: 
             printf(f"请求错误: {e}")
