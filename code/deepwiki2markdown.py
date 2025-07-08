@@ -506,7 +506,6 @@ def process_node(node: Any) -> str:
     result_md = ""
     
     try:
-        # 根据标签类型处理
         if node.name == 'p':
             content = ''.join(process_node(child) for child in node.children)
             content = content.strip()
@@ -546,7 +545,7 @@ def process_node(node: Any) -> str:
             
             if svg_element:
                 diagram_type = svg_element.get('aria-roledescription', '')
-                if 'flowchart' in diagram_type:
+                if 'flowchart-v2' in diagram_type:
                     mermaid_output = convert_flowchart_svg_to_mermaid_text(svg_element)
                 elif 'class' in diagram_type:
                     mermaid_output = convert_class_diagram_svg_to_mermaid_text(svg_element)
@@ -573,6 +572,11 @@ def process_node(node: Any) -> str:
         elif node.name == 'a':
             href = node.get('href', '')
             text = ''.join(process_node(child) for child in node.children).strip()
+            
+            # 特殊处理：源码文件链接是 文件名 + 行号 格式
+            if re.search(r'#L(\d+)(?:-L(\d+))?$', href):
+                format_str = lambda s: f"{s.split()[0]} L{s.split()[-1].replace('-', '-L')}"
+                text = format_str(text)
             
             if href:
                 result_md = f"[{text}]({href})"
@@ -608,6 +612,28 @@ def process_node(node: Any) -> str:
         elif node.name == 'br':
             return "  \n"
         
+        elif node.name == "table":
+            table_md = ""
+            rows = node.find_all('tr')
+            if rows:
+                # Header
+                header_cells = rows[0].find_all(['th', 'td'])
+                header = "|" + "|".join(cell.get_text(strip=True).replace("|", "\\|") for cell in header_cells) + "|"
+                sep = "|" + "|".join([" --- " for _ in header_cells]) + "|"
+                table_md += header + "\n" + sep + "\n"
+                # Body
+                for row in rows[1:]:
+                    cells = row.find_all(['th', 'td'])
+                    row_md = "|" + "|".join(cell.get_text(strip=True).replace("|", "\\|").replace("\n", " <br> ") for cell in cells) + "|"
+                    table_md += row_md + "\n"
+            return table_md + ("\n" if table_md else "")
+        
+        elif node.name == "details":
+            summary = node.find('summary')
+            summary_text = process_node(summary) if summary else "Details"
+            details_content = ''.join(process_node(c) for c in node.children if c.name != "summary")
+            return f"> **{summary_text.strip()}**\n" + '\n'.join([f"> {l}" for l in details_content.strip().split('\n')]) + "\n\n"
+
         else:
             # 处理其他元素
             content = ''.join(process_node(child) for child in node.children)
@@ -618,54 +644,6 @@ def process_node(node: Any) -> str:
         return f"[ERROR_PROCESSING:{node.name}]"
     
     return result_md
-
-# def get_page_source(url):
-#     """
-#     使用 Selenium 获取指定 URL 的网页源码。
-
-#     Args:
-#         url (str): 要获取源码的网页 URL。
-
-#     Returns:
-#         str: 网页的完整 HTML 源码，如果发生错误则返回 None。
-#     """
-#     # 配置 Chrome 选项 (可选)：例如，无头模式运行
-#     chrome_options = Options()
-#     # 禁用所有日志输出
-#     chrome_options.add_argument('--log-level=3')  # 0=INFO, 1=WARNING, 2=ERROR, 3=FATAL
-#     chrome_options.add_argument('--disable-logging')  # 禁用日志
-#     chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])  # 排除日志开关
-#     # 禁用控制台输出
-#     chrome_options.add_argument('--disable-dev-shm-usage')
-#     chrome_options.add_argument('--no-sandbox')
-#     chrome_options.add_argument('--disable-gpu')
-#     chrome_options.add_argument('--headless')  # 无头模式也会减少输出
-#     # 指定 ChromeDriver 的路径
-#     # 如果您将 chromedriver 放在系统 PATH 中，则无需指定 service_executable_path
-#     # service = Service(executable_path='/path/to/your/chromedriver') # 替换为您的chromedriver路径
-#     # driver = webdriver.Chrome(service=service, options=chrome_options)
-    
-#     # 如果 chromedriver 在 PATH 中，可以直接这样初始化
-#     driver = webdriver.Chrome(options=chrome_options)
-
-#     try:
-#         # 打开网页
-#         driver.get(url)
-
-#         # 等待页面加载完成 (可选，根据页面复杂度调整)
-#         # 您可以使用显式等待来等待某个元素出现，或者简单地等待几秒
-#         time.sleep(3) # 简单等待3秒，确保页面内容加载
-
-#         # 获取网页源码
-#         return driver.page_source
-
-#     except Exception as e:
-#         printf(f"An error occurred: {e}")
-#         return None
-#     finally:
-#         # 关闭浏览器
-#         if driver:
-#             driver.quit()
 
 def deepwiki2markdown(url: str, output_path: str) -> str:
     # 配置 Chrome 选项 (可选)：例如，无头模式运行
@@ -691,8 +669,8 @@ def deepwiki2markdown(url: str, output_path: str) -> str:
         # 打开网页
         driver.get(url)
 
-        # # 等待页面加载完成 (可选，根据页面复杂度调整)。可以使用显式等待来等待某个元素出现，或者简单地等待几秒
-        # time.sleep(3) # 简单等待3秒，确保页面内容加载
+        # 等待页面加载完成 (可选，根据页面复杂度调整)。可以使用显式等待来等待某个元素出现，或者简单地等待几秒
+        time.sleep(3) # 简单等待3秒，确保页面内容加载
 
         # 一个 URL 对应多个篇文章，我们用一个目录存放
         pdir = url.split('/')[-1]
@@ -717,11 +695,12 @@ def deepwiki2markdown(url: str, output_path: str) -> str:
                     urls.append(url + '/' + href.split('/')[-1])
         # 开始处理当前 URL 下所有页面（其中，第一个目录与基础 URL 实际是一个页面）
         for url, filename in zip(urls, filenames):
+            printf(f"提取: {url}")
             # 打开网页
             driver.get(url)
 
-            # # 等待页面加载完成 (可选，根据页面复杂度调整)。可以使用显式等待来等待某个元素出现，或者简单地等待几秒
-            # time.sleep(3) # 简单等待3秒，确保页面内容加载
+            # 等待页面加载完成 (可选，根据页面复杂度调整)。可以使用显式等待来等待某个元素出现，或者简单地等待几秒
+            time.sleep(3) # 简单等待3秒，确保页面内容加载
             
             # 主内容
             soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -733,12 +712,14 @@ def deepwiki2markdown(url: str, output_path: str) -> str:
             markdown = ''.join(process_node(child) for child in content.children)
             markdown = re.sub(r'\n{3,}', '\n\n', markdown.strip())
             
-            markdown_name = f"{filename}.md"
+            # 用于规范化文件名。示例：txt = sanitize(txt)
+            sanitize = lambda f: re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', f).strip(' .')[:255] or 'unnamed'
+            filename_f = sanitize(filename)
+            markdown_name = f"{filename_f}.md"
             md_path = os.path.join(f"{output_path}/{pdir}", markdown_name)
             with open(md_path, 'w', encoding='utf-8') as f:
                 f.write(markdown)
             printf(f"保存: {md_path}")
-
     except Exception as e:
         printf(f"An error occurred: {e}")
         return None
@@ -746,20 +727,3 @@ def deepwiki2markdown(url: str, output_path: str) -> str:
         # 关闭浏览器
         if driver:
             driver.quit()
-
-def deepwiki2markdown_1(html_content: str) -> str:
-    """将 HTML 内容转换为 Markdown"""
-    soup = BeautifulSoup(html_content, 'html.parser')
-    
-    # 获取内容容器
-    container = soup.body
-
-    # 处理所有子节点
-    markdown = ""
-    for child in container.children:
-        markdown += process_node(child)
-    
-    # 规范化空白行
-    markdown = re.sub(r'\n{3,}', '\n\n', markdown.strip())
-    
-    return markdown
