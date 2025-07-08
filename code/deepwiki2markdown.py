@@ -8,12 +8,12 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from code.printf import printf
 
-def convert_flowchart_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optional[str]:
+def convert_flowchart_svg_to_mermaid_text_2(svg_element: BeautifulSoup) -> Optional[str]:
     """将流程图 SVG 转换为 Mermaid 文本"""
     if not svg_element:
         return None
     
-    print("Starting flowchart conversion with hierarchical logic...")
+    printf("Starting flowchart conversion with hierarchical logic...")
     mermaid_code = "flowchart TD\n\n"
     nodes: Dict[str, Dict] = {}
     clusters: Dict[str, Dict] = {}
@@ -146,7 +146,7 @@ def convert_flowchart_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optiona
                 break
         
         if not source_node or not target_node:
-            print(f"无法确定边的源/目标: {path_id}")
+            printf(f"无法确定边的源/目标: {path_id}")
             continue
         
         # 获取标签文本
@@ -182,7 +182,7 @@ def convert_flowchart_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optiona
         
         edges.append({'text': edge_text, 'parent_id': lca or 'root'})
     
-    # 5. 生成Mermaid输出
+    # 5. 生成 Mermaid 输出
     defined_node_mermaid_ids = set()
     for node in nodes.values():
         if node['mermaid_id'] not in defined_node_mermaid_ids:
@@ -245,6 +245,114 @@ def convert_flowchart_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optiona
         return None
         
     return f'```mermaid\n{mermaid_code.strip()}\n```'
+
+from bs4 import BeautifulSoup
+import re
+
+def convert_flowchart_svg_to_mermaid_text(svg_content):
+    # 1. 收集所有节点
+    nodes = {}
+    for node in svg_content.select('g.node'):
+        node_id = node.get('id', '')
+        if not node_id:
+            continue
+            
+        # 提取节点文本
+        label = node.select_one('.label')
+        text = ''
+        if label:
+            text = label.get_text(strip=True).replace('"', "'")
+        
+        # 生成简化的mermaid ID
+        mermaid_id = re.sub(r'^flowchart-|-\d+$', '', node_id)
+        nodes[node_id] = {
+            'mermaid_id': mermaid_id,
+            'text': text
+        }
+    
+    # 2. 收集所有集群
+    clusters = {}
+    for cluster in svg_content.select('g.cluster'):
+        cluster_id = cluster.get('id', '')
+        if not cluster_id:
+            continue
+            
+        # 提取集群标题
+        title = ''
+        label = cluster.select_one('.cluster-label')
+        if label:
+            title = label.get_text(strip=True).replace('"', "'")
+        if not title:
+            title = cluster_id
+            
+        clusters[cluster_id] = {
+            'title': title,
+            'nodes': []
+        }
+    
+    # 3. 构建层次关系
+    parent_map = {}
+    for node_id in nodes:
+        node_el = svg_content.find(id=node_id)
+        if not node_el:
+            continue
+            
+        # 查找直接父集群
+        parent_cluster = node_el.find_parent('g', class_='cluster')
+        if parent_cluster and parent_cluster.get('id'):
+            parent_map[node_id] = parent_cluster.get('id')
+            clusters[parent_cluster.get('id')]['nodes'].append(node_id)
+    
+    # 4. 处理边
+    edges = []
+    for path in svg_content.select('path.flowchart-link'):
+        path_id = path.get('id', '')
+        if not path_id:
+            continue
+            
+        # 提取源节点和目标节点
+        clean_id = re.sub(r'^L_|FL_', '', path_id).replace('_', '')
+        source_node = None
+        target_node = None
+        
+        # 尝试匹配节点
+        for node_id, node in nodes.items():
+            if node['mermaid_id'] in clean_id:
+                if not source_node:
+                    source_node = node
+                else:
+                    target_node = node
+                    break
+        
+        if not source_node or not target_node:
+            continue
+            
+        edges.append(f"{source_node['mermaid_id']} --> {target_node['mermaid_id']}")
+    
+    # 5. 生成Mermaid代码
+    mermaid_code = "flowchart TD\n\n"
+    
+    # 添加节点定义
+    defined_ids = set()
+    for node in nodes.values():
+        if node['mermaid_id'] not in defined_ids:
+            mermaid_code += f"{node['mermaid_id']}[\"{node['text']}\"]\n"
+            defined_ids.add(node['mermaid_id'])
+    
+    # 添加集群
+    for cluster_id, cluster in clusters.items():
+        mermaid_code += f"\nsubgraph {cluster_id} [\"{cluster['title']}\"]\n"
+        for node_id in cluster['nodes']:
+            if node_id in nodes:
+                mermaid_code += f"    {nodes[node_id]['mermaid_id']}\n"
+        mermaid_code += "end\n"
+    
+    # 添加边
+    mermaid_code += "\n"
+    for edge in edges:
+        mermaid_code += f"{edge}\n"
+    
+    return f"```mermaid\n{mermaid_code.strip()}\n```"
 
 def convert_class_diagram_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optional[str]:
     """将类图 SVG 转换为 Mermaid 文本"""
@@ -375,7 +483,7 @@ def convert_state_diagram_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Opt
     if not svg_element:
         return None
         
-    print("Converting state diagram...")
+    printf("Converting state diagram...")
     nodes = []
     transitions = []
     
@@ -545,7 +653,7 @@ def process_node(node: Any) -> str:
             
             if svg_element:
                 diagram_type = svg_element.get('aria-roledescription', '')
-                if 'flowchart-v2' in diagram_type:
+                if 'flowchart' in diagram_type:
                     mermaid_output = convert_flowchart_svg_to_mermaid_text(svg_element)
                 elif 'class' in diagram_type:
                     mermaid_output = convert_class_diagram_svg_to_mermaid_text(svg_element)
@@ -640,7 +748,7 @@ def process_node(node: Any) -> str:
             result_md = content + "\n\n" if content.strip() else ""
     
     except Exception as e:
-        print(f"处理节点错误: {node.name} - {str(e)}")
+        printf(f"处理节点错误: {node.name} - {str(e)}")
         return f"[ERROR_PROCESSING:{node.name}]"
     
     return result_md
