@@ -250,109 +250,143 @@ from bs4 import BeautifulSoup
 import re
 
 def convert_flowchart_svg_to_mermaid_text(svg_content):
-    # 1. 收集所有节点
-    nodes = {}
-    for node in svg_content.select('g.node'):
-        node_id = node.get('id', '')
-        if not node_id:
-            continue
+    try:
+        # 1. 提取所有节点（改进ID处理）
+        nodes = {}
+        id_map = {}  # 映射原始ID到标准化ID
+        for node in svg_content.select('g.node.default'):
+            original_id = node.get('id', '')
+            if not original_id.startswith('flowchart-'):
+                continue
+                
+            # 提取标准节点ID（去除flowchart-前缀和数字后缀）
+            base_id = re.sub(r'flowchart-([^-]+)(-\d+)?$', r'\1', original_id)
             
-        # 提取节点文本
-        label = node.select_one('.label')
-        text = ''
-        if label:
-            text = label.get_text(strip=True).replace('"', "'")
-        
-        # 生成简化的mermaid ID
-        mermaid_id = re.sub(r'^flowchart-|-\d+$', '', node_id)
-        nodes[node_id] = {
-            'mermaid_id': mermaid_id,
-            'text': text
-        }
-    
-    # 2. 收集所有集群
-    clusters = {}
-    for cluster in svg_content.select('g.cluster'):
-        cluster_id = cluster.get('id', '')
-        if not cluster_id:
-            continue
-            
-        # 提取集群标题
-        title = ''
-        label = cluster.select_one('.cluster-label')
-        if label:
-            title = label.get_text(strip=True).replace('"', "'")
-        if not title:
-            title = cluster_id
-            
-        clusters[cluster_id] = {
-            'title': title,
-            'nodes': []
-        }
-    
-    # 3. 构建层次关系
-    parent_map = {}
-    for node_id in nodes:
-        node_el = svg_content.find(id=node_id)
-        if not node_el:
-            continue
-            
-        # 查找直接父集群
-        parent_cluster = node_el.find_parent('g', class_='cluster')
-        if parent_cluster and parent_cluster.get('id'):
-            parent_map[node_id] = parent_cluster.get('id')
-            clusters[parent_cluster.get('id')]['nodes'].append(node_id)
-    
-    # 4. 处理边
-    edges = []
-    for path in svg_content.select('path.flowchart-link'):
-        path_id = path.get('id', '')
-        if not path_id:
-            continue
-            
-        # 提取源节点和目标节点
-        clean_id = re.sub(r'^L_|FL_', '', path_id).replace('_', '')
-        source_node = None
-        target_node = None
-        
-        # 尝试匹配节点
-        for node_id, node in nodes.items():
-            if node['mermaid_id'] in clean_id:
-                if not source_node:
-                    source_node = node
+            # 提取节点文本
+            label = node.select_one('.label')
+            text = ''
+            if label:
+                foreign = label.select_one('foreignObject div')
+                if foreign:
+                    text = foreign.get_text(strip=True).replace('"', "'")
                 else:
-                    target_node = node
-                    break
-        
-        if not source_node or not target_node:
-            continue
+                    text = label.get_text(strip=True).replace('"', "'")
             
-        edges.append(f"{source_node['mermaid_id']} --> {target_node['mermaid_id']}")
+            nodes[base_id] = text
+            id_map[original_id] = base_id
+        # 2. 提取所有集群（保持原始结构）
+        clusters = {}
+        for cluster in svg_content.select('g.cluster'):
+            cluster_id = cluster.get('id', '')
+            if not cluster_id.startswith('subGraph'):
+                continue
+                
+            # 提取集群标题
+            label = cluster.select_one('.cluster-label')
+            title = cluster_id.replace('subGraph', 'cluster_')
+            if label:
+                foreign = label.select_one('foreignObject div')
+                if foreign:
+                    title = foreign.get_text(strip=True).replace('"', "'")
+                else:
+                    title = label.get_text(strip=True).replace('"', "'")
+            
+            # 收集集群中的节点（通过坐标判断包含关系）
+            cluster_nodes = []
+            cluster_rect = cluster.select_one('rect')
+            if cluster_rect:
+                x1 = float(cluster_rect.get('x', 0))
+                y1 = float(cluster_rect.get('y', 0))
+                x2 = x1 + float(cluster_rect.get('width', 0))
+                y2 = y1 + float(cluster_rect.get('height', 0))
+                
+                for node in svg_content.select('g.node.default'):
+                    node_transform = node.get('transform', '')
+                    if not node_transform.startswith('translate('):
+                        continue
+                        
+                    # 提取节点坐标
+                    coords = re.findall(r'translate\(([\d.]+),\s*([\d.]+)\)', node_transform)
+                    if not coords:
+                        continue
+                        
+                    node_x, node_y = map(float, coords[0])
+                    
+                    # 检查节点是否在集群矩形内
+                    if x1 <= node_x <= x2 and y1 <= node_y <= y2:
+                        node_id = node.get('id', '')
+                        if node_id in id_map:
+                            cluster_nodes.append(id_map[node_id])
+            
+            clusters[cluster_id] = {
+                'title': title,
+                'nodes': cluster_nodes
+            }
+        # 3. 完全重构边关系解析（关键修正）
+        edges = []
+        for path in svg_content.select('path.flowchart-link'):
+            path_id = path.get('id', '')
+            if not path_id.startswith('L_'):
+                continue
+                
+            # 精确解析边关系（支持多种格式）
+            parts = path_id[2:].split('_')  # 去掉L_前缀
+            
+            # 情况1：标准格式 L_source_target
+            if len(parts) == 2:
+                source, target = parts
+                if source in nodes and target in nodes:
+                    edges.append(f"{source} --> {target}")
+            
+            # 情况2：带数字后缀 L_source_target_0
+            elif len(parts) == 3 and parts[2].isdigit():
+                source, target, _ = parts
+                if source in nodes and target in nodes:
+                    edges.append(f"{source} --> {target}")
+            
+            # 情况3：多段名称 L_GicDistributorRegs_tock_registers_0
+            else:
+                # 尝试所有可能的组合
+                for i in range(1, len(parts)):
+                    source_candidate = '_'.join(parts[:i])
+                    target_candidate = '_'.join(parts[i:])
+                    
+                    # 去除数字后缀
+                    source_candidate = re.sub(r'_\d+$', '', source_candidate)
+                    target_candidate = re.sub(r'_\d+$', '', target_candidate)
+                    
+                    if source_candidate in nodes and target_candidate in nodes:
+                        edges.append(f"{source_candidate} --> {target_candidate}")
+                        break
+        # 4. 生成完全正确的Mermaid代码
+        mermaid = ["flowchart TD"]
+        
+        # 添加所有集群
+        for cluster_id, data in clusters.items():
+            mermaid.append(f"\nsubgraph {cluster_id}[\"{data['title']}\"]")
+            for node_id in data['nodes']:
+                mermaid.append(f"    {node_id}[\"{nodes[node_id]}\"]")
+            mermaid.append("end")
+        
+        # 添加游离节点
+        clustered_nodes = set()
+        for data in clusters.values():
+            clustered_nodes.update(data['nodes'])
+            
+        for node_id, text in nodes.items():
+            if node_id not in clustered_nodes:
+                mermaid.append(f"{node_id}[\"{text}\"]")
+        
+        # 添加所有边关系（确保顺序正确）
+        if edges:
+            mermaid.append("")
+            mermaid.extend(sorted(set(edges)))  # 去重并排序
+        
+        return "```mermaid\n" + "\n".join(mermaid) + "\n```"
     
-    # 5. 生成Mermaid代码
-    mermaid_code = "flowchart TD\n\n"
-    
-    # 添加节点定义
-    defined_ids = set()
-    for node in nodes.values():
-        if node['mermaid_id'] not in defined_ids:
-            mermaid_code += f"{node['mermaid_id']}[\"{node['text']}\"]\n"
-            defined_ids.add(node['mermaid_id'])
-    
-    # 添加集群
-    for cluster_id, cluster in clusters.items():
-        mermaid_code += f"\nsubgraph {cluster_id} [\"{cluster['title']}\"]\n"
-        for node_id in cluster['nodes']:
-            if node_id in nodes:
-                mermaid_code += f"    {nodes[node_id]['mermaid_id']}\n"
-        mermaid_code += "end\n"
-    
-    # 添加边
-    mermaid_code += "\n"
-    for edge in edges:
-        mermaid_code += f"{edge}\n"
-    
-    return f"```mermaid\n{mermaid_code.strip()}\n```"
+    except Exception as e:
+        print(f"转换过程中出错: {str(e)}")
+        return None
 
 def convert_class_diagram_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optional[str]:
     """将类图 SVG 转换为 Mermaid 文本"""
