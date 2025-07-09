@@ -70,7 +70,7 @@ def main():
     printf(f"成功翻译 {translated_num} 个 Markdown 文件！")
 
     printf(f"\n开始转换为 Word 文档...")
-    word_num = 1
+    word_num = 0
     for root, _, files in os.walk('data/files_markdown_translated'):
         for file in files:
             if file.endswith('.md'):
