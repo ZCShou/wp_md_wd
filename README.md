@@ -1,10 +1,17 @@
 # 网页转文档
 
-这是一个经过改进的 Python 自动化工具，用于网页中提取内容转换为 Markdown，并最终生成保留了原始格式的高质量 Word 文档。
+这是一个 Python 自动化工具，用于网页中提取内容转换为 Markdown，然后翻译，并最终生成保留了原始格式的高质量 Word 文档。
 
-# 环境
+# 使用
 
-1. 安装 Pandoc
+1. Markdown 转 Word 使用了 Pandoc，需要手动从 https://www.pandoc.org/ 下载安装，并确保环境变量中可以访问 Pandoc 命令
 
-2. 安装 npm install mermaid-filter
+2. 通过 `pip install -r requirements.txt` 安装依赖包
 
+3. 执行 `python main.py` 等待
+
+# 问题
+
+1. 目前使用的 selenium 库通过 Chrome 来请求页面，速度较慢。主要是因为 Deepwiki 网站很多动态资源是由 JS 来加载的，我们需要请求会动态 DOM 页面内容
+
+2. 翻译过程比较慢。后续可以考虑多线程
