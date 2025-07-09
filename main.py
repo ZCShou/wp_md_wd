@@ -32,42 +32,42 @@ def main():
         printf(f"Error: {e}")
     printf(f"成功获取 {len(urls)} 个 URL！")
     
-    # printf(f"\n开始依次提取 URL 页面内容...")
-    # markdown_num = 0
-    # for url in urls:
-    #     try:
-    #         printf(f"提取: {url}")
-    #         deepwiki2markdown(url, 'data/files_markdown')
-    #         markdown_num += 1
-    #     except requests.exceptions.RequestException as e: 
-    #         printf(f"请求错误: {e}")
-    #     except Exception as e:
-    #         printf(f"转换错误: {e}")
-    # printf(f"成功提取 {markdown_num} 个 URL 页面内容！")
+    printf(f"\n开始依次提取 URL 页面内容...")
+    markdown_num = 0
+    for url in urls:
+        try:
+            printf(f"提取: {url}")
+            deepwiki2markdown(url, 'data/files_markdown')
+            markdown_num += 1
+        except requests.exceptions.RequestException as e: 
+            printf(f"请求错误: {e}")
+        except Exception as e:
+            printf(f"转换错误: {e}")
+    printf(f"成功提取 {markdown_num} 个 URL 页面内容！")
     
-    # printf(f"\n开始翻译 Markdown 文件...")
-    # translated_num = 1
-    # for root, _, files in os.walk('data/files_markdown'):
-    #     for file in files:
-    #         if file.endswith('.md'):
-    #             src_path = os.path.join(root, file)
-    #             rel_path = os.path.relpath(src_path, 'data/files_markdown')
-    #             dst_path = os.path.join('data/files_markdown_translated', rel_path)
+    printf(f"\n开始翻译 Markdown 文件...")
+    translated_num = 1
+    for root, _, files in os.walk('data/files_markdown'):
+        for file in files:
+            if file.endswith('.md'):
+                src_path = os.path.join(root, file)
+                rel_path = os.path.relpath(src_path, 'data/files_markdown')
+                dst_path = os.path.join('data/files_markdown_translated', rel_path)
                 
-    #             # 正确处理目标目录创建（包括根目录情况）
-    #             dst_dir = os.path.dirname(dst_path)
-    #             if dst_dir:  # 只有当目标路径包含目录时才创建
-    #                 os.makedirs(dst_dir, exist_ok=True)
+                # 正确处理目标目录创建（包括根目录情况）
+                dst_dir = os.path.dirname(dst_path)
+                if dst_dir:  # 只有当目标路径包含目录时才创建
+                    os.makedirs(dst_dir, exist_ok=True)
                 
-    #             try:
-    #                 with open(src_path, 'r', encoding='utf-8') as f_in, \
-    #                      open(dst_path, 'w', encoding='utf-8') as f_out:
-    #                     f_out.write(translate_markdown(f_in.read()))
-    #                 printf(f"翻译: {rel_path}")
-    #                 translated_num += 1
-    #             except Exception as e:
-    #                 printf(f"翻译 {src_path} 出错: {e}")
-    # printf(f"成功翻译 {translated_num} 个 Markdown 文件！")
+                try:
+                    with open(src_path, 'r', encoding='utf-8') as f_in, \
+                         open(dst_path, 'w', encoding='utf-8') as f_out:
+                        f_out.write(translate_markdown(f_in.read()))
+                    printf(f"翻译: {rel_path}")
+                    translated_num += 1
+                except Exception as e:
+                    printf(f"翻译 {src_path} 出错: {e}")
+    printf(f"成功翻译 {translated_num} 个 Markdown 文件！")
 
     printf(f"\n开始转换为 Word 文档...")
     word_num = 1
