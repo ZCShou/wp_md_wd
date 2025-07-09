@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-#coding=utf-8
 import os
 import requests
 import re
 import pandas as pd
 import pypandoc
 from code.deepwiki2markdown import deepwiki2markdown
-from code.translationmarkdown import translate_markdown
-# from code.markdown2word import convert_markdown_to_word
+from code.translationmarkdown import MarkdownTranslator
 from code.printf import printf
+
+# 定义 DeepSeek API 密钥
+DEEPSEEK_API_KEY = ''
 
 def main():
     printf(">>> DeepWiki 页面 ➜  Markdown ➜  翻译 ➜  Word <<<")
@@ -46,7 +47,7 @@ def main():
     printf(f"成功提取 {markdown_num} 个 URL 页面内容！")
     
     printf(f"\n开始翻译 Markdown 文件...")
-    translated_num = 1
+    translated_num = 0
     for root, _, files in os.walk('data/files_markdown'):
         for file in files:
             if file.endswith('.md'):
@@ -59,12 +60,14 @@ def main():
                 if dst_dir:  # 只有当目标路径包含目录时才创建
                     os.makedirs(dst_dir, exist_ok=True)
                 
+                printf(f"翻译: {src_path}")
                 try:
                     with open(src_path, 'r', encoding='utf-8') as f_in, \
                          open(dst_path, 'w', encoding='utf-8') as f_out:
-                        f_out.write(translate_markdown(f_in.read()))
-                    printf(f"翻译: {rel_path}")
+                        translator = MarkdownTranslator(DEEPSEEK_API_KEY)
+                        f_out.write(translator.translate_markdown(f_in.read()))
                     translated_num += 1
+                    printf(f"保存: {dst_path}")
                 except Exception as e:
                     printf(f"翻译 {src_path} 出错: {e}")
     printf(f"成功翻译 {translated_num} 个 Markdown 文件！")
@@ -83,8 +86,10 @@ def main():
                 if dst_dir:  # 只有当目标路径包含目录时才创建
                     os.makedirs(dst_dir, exist_ok=True)
                 
+                printf(f"转换: {src_path}")
                 dst_path = dst_path.removesuffix('.md').removesuffix('.markdown') + '.docx' if dst_path.endswith(('.md', '.markdown')) else dst_path
                 pypandoc.convert_file(src_path, 'docx', outputfile=dst_path, format='markdown')
+                printf(f"保存: {dst_path}")
     printf(f"成功转换 {word_num} 个 Word 文件！")
 
 if __name__ == "__main__":
