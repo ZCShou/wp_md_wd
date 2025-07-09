@@ -3,12 +3,21 @@ import re
 import json
 import time
 from bs4 import BeautifulSoup
-from typing import Dict, List, Optional, Any
+from typing import Any
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from code.printf import printf
 
 def convert_flowchart_svg_to_mermaid_text(svg_content):
+    """
+    将流程图 SVG 转换为 Mermaid 文本
+
+    Parameters:
+        svg_content (str): 网页中 <svg> 标签中的内容
+
+    Returns:
+        str: 转换后的 Mermaid 文本
+    """
     try:
         # 1. 提取所有节点（改进ID处理）
         nodes = {}
@@ -147,176 +156,16 @@ def convert_flowchart_svg_to_mermaid_text(svg_content):
         print(f"转换过程中出错: {str(e)}")
         return None
 
-def convert_class_diagram_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optional[str]:
-    """将类图 SVG 转换为 Mermaid 文本"""
-    if not svg_element:
-        return None
-        
-    mermaid_lines = ['classDiagram']
-    class_data: Dict[str, Dict] = {}
-    
-    # 1. 解析类信息
-    for node in svg_element.select('g.node.default[id^="classId-"]'):
-        class_id_svg = node.get('id')
-        if not class_id_svg:
-            continue
-            
-        match = re.match(r'^classId-([^-]+(?:-[^-]+)*)-(\d+)$', class_id_svg)
-        if not match:
-            continue
-            
-        class_name = match.group(1)
-        
-        # 获取位置信息
-        transform = node.get('transform', '')
-        tx, ty = 0, 0
-        if transform:
-            match = re.search(r'translate\(([^,]+),\s*([^)]+)\)', transform)
-            if match:
-                tx = float(match.group(1))
-                ty = float(match.group(2))
-        
-        # 初始化类数据
-        if class_name not in class_data:
-            class_data[class_name] = {
-                'stereotype': "",
-                'members': [],
-                'methods': [],
-                'svg_id': class_id_svg,
-                'x': tx,
-                'y': ty,
-                'width': 200,  # 默认值
-                'height': 200  # 默认值
-            }
-        
-        # 获取定型文本
-        stereotype_elem = node.select_one('g.annotation-group.text foreignObject span.nodeLabel p, g.annotation-group.text foreignObject div p')
-        if stereotype_elem and stereotype_elem.get_text(strip=True):
-            class_data[class_name]['stereotype'] = stereotype_elem.get_text(strip=True)
-        
-        # 获取成员
-        for m in node.select('g.members-group.text g.label foreignObject span.nodeLabel p, g.members-group.text g.label foreignObject div p'):
-            txt = m.get_text(strip=True)
-            if txt:
-                class_data[class_name]['members'].append(txt)
-        
-        # 获取方法
-        for m in node.select('g.methods-group.text g.label foreignObject span.nodeLabel p, g.methods-group.text g.label foreignObject div p'):
-            txt = m.get_text(strip=True)
-            if txt:
-                class_data[class_name]['methods'].append(txt)
-    
-    # 2. 解析注释
-    notes = []
-    # 简化处理：在实际应用中需要完整实现
-    
-    # 3. 生成Mermaid代码
-    for class_name, data in class_data.items():
-        if data['stereotype']:
-            mermaid_lines.append(f"    class {class_name} {{")
-            mermaid_lines.append(f"        {data['stereotype']}")
-        else:
-            mermaid_lines.append(f"    class {class_name} {{")
-        
-        for member in data['members']:
-            mermaid_lines.append(f"        {member}")
-        
-        for method in data['methods']:
-            mermaid_lines.append(f"        {method}")
-        
-        mermaid_lines.append('    }')
-    
-    # 4. 添加关系
-    # 简化处理：在实际应用中需要完整实现
-    
-    if len(mermaid_lines) <= 1 and not class_data and not notes:
-        return None
-        
-    return f'```mermaid\n{"\n".join(mermaid_lines)}\n```'
-
-def convert_sequence_diagram_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optional[str]:
-    """将序列图 SVG 转换为 Mermaid 文本"""
-    if not svg_element:
-        return None
-        
-    # 1. 解析参与者
-    participants = []
-    for text_el in svg_element.select('text.actor-box'):
-        name = text_el.get_text(strip=True).replace('"', '')
-        x = float(text_el.get('x', 0))
-        participants.append({'name': name, 'x': x})
-    
-    participants.sort(key=lambda p: p['x'])
-    
-    # 去重
-    unique_participants = []
-    seen_names = set()
-    for p in participants:
-        if p['name'] not in seen_names:
-            unique_participants.append(p)
-            seen_names.add(p['name'])
-    
-    # 2. 生成Mermaid代码
-    mermaid_output = "sequenceDiagram\n"
-    for p in unique_participants:
-        mermaid_output += f"  participant {p['name']}\n"
-    
-    mermaid_output += "\n"
-    
-    # 3. 添加消息（简化处理）
-    # 在实际应用中需要完整实现消息解析
-    
-    if not unique_participants:
-        return None
-        
-    return f'```mermaid\n{mermaid_output.strip()}\n```'
-
-def convert_state_diagram_svg_to_mermaid_text(svg_element: BeautifulSoup) -> Optional[str]:
-    """将状态图 SVG 转换为 Mermaid 文本"""
-    if not svg_element:
-        return None
-        
-    printf("Converting state diagram...")
-    nodes = []
-    transitions = []
-    
-    # 1. 解析状态
-    for state_el in svg_element.select('g.node.statediagram-state'):
-        state_name_el = state_el.select_one('foreignObject .nodeLabel p, foreignObject .nodeLabel span')
-        if not state_name_el:
-            continue
-            
-        state_name = state_name_el.get_text(strip=True)
-        transform = state_el.get('transform', '')
-        
-        # 获取位置信息
-        tx, ty = 0, 0
-        if transform:
-            match = re.search(r'translate\(([^,]+),\s*([^)]+)\)', transform)
-            if match:
-                tx = float(match.group(1))
-                ty = float(match.group(2))
-        
-        # 使用近似边界框
-        nodes.append({
-            'name': state_name,
-            'x': tx,
-            'y': ty,
-            'width': 100,  # 默认值
-            'height': 50   # 默认值
-        })
-    
-    # 2. 生成Mermaid代码
-    mermaid_code = "stateDiagram-v2\n"
-    # 简化处理：在实际应用中需要完整实现转换逻辑
-    
-    if not transitions:
-        return None
-        
-    return f'```mermaid\n{mermaid_code.strip()}\n```'
-
 def detect_code_language(code_text: str) -> str:
-    """自动检测代码语言"""
+    """
+    通过不同编程语言的某些特征字来推测语言类型
+
+    Parameters:
+        code_text (int): 网页中的代码内容
+
+    Returns:
+        str: 编程语言的名字
+    """
     if not code_text or len(code_text.strip()) < 10:
         return ''
     
@@ -387,7 +236,16 @@ def detect_code_language(code_text: str) -> str:
     return ''
 
 def process_node(node: Any) -> str:
-    """递归处理 DOM 节点转换为 Markdown"""
+    """
+    递归处理 DOM 节点转换为 Markdown
+
+    Parameters:
+        node (Any): 网页节点内容
+
+    Returns:
+        str: 转换后的 Markdown 内容
+    """
+
     # 文本节点处理
     if node.string and not node.name:
         return node.string
@@ -449,11 +307,11 @@ def process_node(node: Any) -> str:
                 if 'flowchart' in diagram_type:
                     mermaid_output = convert_flowchart_svg_to_mermaid_text(svg_element)
                 elif 'class' in diagram_type:
-                    mermaid_output = convert_class_diagram_svg_to_mermaid_text(svg_element)
+                    mermaid_output = '暂不支持类图 SVG 的转换'
                 elif 'sequence' in diagram_type:
-                    mermaid_output = convert_sequence_diagram_svg_to_mermaid_text(svg_element)
+                    mermaid_output = '暂不支持序列图 SVG 的转换'
                 elif 'stateDiagram' in diagram_type:
-                    mermaid_output = convert_state_diagram_svg_to_mermaid_text(svg_element)
+                    mermaid_output = '暂不支持状态图 SVG 的转换'
             
             if mermaid_output:
                 result_md = f"\n{mermaid_output}\n\n"
@@ -546,7 +404,17 @@ def process_node(node: Any) -> str:
     
     return result_md
 
-def deepwiki2markdown(url: str, output_path: str) -> str:
+def deepwiki2markdown(url: str, output_path: str):
+    """
+    解析 Deepwiki 的 URL 页面内容，并转为 Markdown 文件
+
+    Parameters:
+        url (str): Deepwiki 的 URL
+        output_path (str): 转换后 Markdown 文档的保存路径
+
+    Returns:
+        None
+    """
     # 配置 Chrome 选项 (可选)：例如，无头模式运行
     chrome_options = Options()
     # # 禁用所有日志输出
@@ -623,7 +491,6 @@ def deepwiki2markdown(url: str, output_path: str) -> str:
             printf(f"保存: {md_path}")
     except Exception as e:
         printf(f"An error occurred: {e}")
-        return None
     finally:
         # 关闭浏览器
         if driver:
