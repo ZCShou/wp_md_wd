@@ -1,6 +1,6 @@
 # 网页转文档
 
-这是一个 Python 自动化工具，用于网页中提取内容转换为 Markdown，然后翻译，并最终生成保留了原始格式的高质量 Word 文档。
+这是一个 Python 自动化工具，用于 Deepwiki 网页网页内容转换为 Markdown，然后翻译，并最终生成保留了原始格式的高质量 Word 文档。
 
 # 使用
 
@@ -10,7 +10,9 @@
 
 3. 通过 `pip install -r requirements.txt` 安装依赖包
 
-4. 执行 `python main.py` 等待
+4. 翻译使用的是 Deepseek API 需要修改 `main.py` 中的 `DEEPSEEK_API_KEY` 为自己的 KEY
+
+5. 执行 `python main.py` 等待
 
 # 问题
 
