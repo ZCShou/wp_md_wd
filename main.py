@@ -3,9 +3,10 @@ import os
 import requests
 import re
 import pandas as pd
+import pypandoc
 from code.deepwiki2markdown import deepwiki2markdown
 from code.translationmarkdown import translate_markdown
-from code.markdown2word import markdown2word
+from code.markdown2word import convert_markdown_to_word
 from code.printf import printf
 
 def main():
@@ -44,49 +45,46 @@ def main():
     printf(f"成功提取 {markdown_num} 个 URL 页面内容！")
     
     printf(f"\n开始翻译 Markdown 文件...")
-    md_files = [f for f in os.listdir('data/files_markdown') if f.endswith('.md')]
-    translated_num = 0
-    for filename in enumerate(md_files):
-        printf(f"翻译: {filename}")
-        
-        input_path = os.path.join('data/files_markdown', filename)
-        output_path = os.path.join('data/files_markdown_translated', filename)
-        
-        with open(input_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # 翻译内容
-        # translated_content = translate_markdown(content)
-        translated_content = 'translate_markdown(content)'
-        
-        with open(output_path, 'w', encoding='utf-8') as f:
-            f.write(translated_content)
-        
-        printf(f"保存: {output_path}")
-        translated_num += 1
+    translated_num = 1
+    for root, _, files in os.walk('data/files_markdown'):
+        for file in files:
+            if file.endswith('.md'):
+                src_path = os.path.join(root, file)
+                rel_path = os.path.relpath(src_path, 'data/files_markdown')
+                dst_path = os.path.join('data/files_markdown_translated', rel_path)
+                
+                # 正确处理目标目录创建（包括根目录情况）
+                dst_dir = os.path.dirname(dst_path)
+                if dst_dir:  # 只有当目标路径包含目录时才创建
+                    os.makedirs(dst_dir, exist_ok=True)
+                
+                try:
+                    with open(src_path, 'r', encoding='utf-8') as f_in, \
+                         open(dst_path, 'w', encoding='utf-8') as f_out:
+                        f_out.write(translate_markdown(f_in.read()))
+                    printf(f"翻译: {rel_path}")
+                    translated_num += 1
+                except Exception as e:
+                    printf(f"翻译 {src_path} 出错: {e}")
     printf(f"成功翻译 {translated_num} 个 Markdown 文件！")
 
-    # 步骤 4：转换为 Word 文档
     printf(f"\n开始转换为 Word 文档...")
-    translated_files = [f for f in os.listdir('data/files_markdown_translated') if f.endswith('.md')]
-    word_num = 0
-    for filename in enumerate(translated_files):
-        printf(f"转换: {filename}")
-        
-        input_path = os.path.join('data/files_markdown_translated', filename)
-        output_path = os.path.join('data/files_word', filename.replace('.md', '.docx'))
-        
-        with open(input_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        # 创建 Word 文档
-        try:
-            markdown2word(content, output_path)
-            printf(f"保存: {output_path}")
-            word_num += 1
-        except Exception as e:
-            printf(f"转换失败: {e}")
-    printf(f"成功转换 {word_num} 个 Word 文档！")
+    word_num = 1
+    for root, _, files in os.walk('data/files_markdown_translated'):
+        for file in files:
+            if file.endswith('.md'):
+                src_path = os.path.join(root, file)
+                rel_path = os.path.relpath(src_path, 'data/files_markdown_translated')
+                dst_path = os.path.join('data/files_word', rel_path)
+                
+                # 正确处理目标目录创建（包括根目录情况）
+                dst_dir = os.path.dirname(dst_path)
+                if dst_dir:  # 只有当目标路径包含目录时才创建
+                    os.makedirs(dst_dir, exist_ok=True)
+                
+                dst_path = dst_path.removesuffix('.md').removesuffix('.markdown') + '.docx' if dst_path.endswith(('.md', '.markdown')) else dst_path
+                pypandoc.convert_file(src_path, 'docx', outputfile=dst_path, filters=["mermaid-filter"], format='markdown')
+    printf(f"成功转换 {word_num} 个 Word 文件！")
 
 if __name__ == "__main__":
     main()

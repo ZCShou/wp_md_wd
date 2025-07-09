@@ -1,130 +1,194 @@
-
+import os
+import re
+import tempfile
+import subprocess
+from markdown import markdown
+from bs4 import BeautifulSoup
 from docx import Document
-from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Inches
+from PIL import Image
 
-def create_table_in_doc(doc, table_lines):
-    """在 Word 文档中创建表格"""
-    if len(table_lines) < 2:
-        return
+def convert_markdown_to_word(input_file, output_file):
+    """将Markdown文件转换为Word文档，支持Mermaid图表"""
+    # 读取Markdown文件内容
+    with open(input_file, 'r', encoding='utf-8') as f:
+        markdown_text = f.read()
     
-    # 解析表格头
-    header_line = table_lines[0]
-    headers = [cell.strip() for cell in header_line.split('|') if cell.strip()]
-    
-    if not headers:
-        return
-    
-    # 跳过分隔符行
-    data_lines = table_lines[2:] if len(table_lines) > 2 else []
-    
-    # 创建表格
-    table = doc.add_table(rows=1, cols=len(headers))
-    table.style = 'Table Grid'
-    
-    # 添加表头
-    hdr_cells = table.rows[0].cells
-    for i, header in enumerate(headers):
-        if i < len(hdr_cells):
-            hdr_cells[i].text = header
-            hdr_cells[i].paragraphs[0].runs[0].bold = True
-    
-    # 添加数据行
-    for line in data_lines:
-        cells_data = [cell.strip() for cell in line.split('|') if cell.strip()]
-        if cells_data:
-            row_cells = table.add_row().cells
-            for i, cell_data in enumerate(cells_data):
-                if i < len(row_cells):
-                    row_cells[i].text = cell_data
-
-def markdown2word(markdown_content, output_path):
-    """将 Markdown 内容转换为格式化的 Word 文档"""
-    doc = Document()
-    
-    # 设置文档样式
-    style = doc.styles['Normal']
-    font = style.font
-    font.name = '微软雅黑'
-    font.size = Pt(12)
-    
-    # 解析 Markdown 内容并转换为 Word
-    lines = markdown_content.split('\n')
-    current_table = []
-    in_code_block = False
-    code_lines = []
-    
-    for line in lines:
-        original_line = line
-        line = line.strip()
+    # 创建临时目录存储生成的图表
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # 处理Mermaid图表
+        processed_markdown = process_mermaid_diagrams(markdown_text, temp_dir)
         
-        if not line and not in_code_block:
-            continue
+        # 将Markdown转换为HTML
+        html = markdown(processed_markdown, extensions=['markdown.extensions.fenced_code'])
+        
+        # 创建Word文档
+        doc = Document()
+        
+        # 解析HTML并转换为Word元素
+        soup = BeautifulSoup(html, 'html.parser')
+        convert_html_to_docx(soup, doc, temp_dir)
+        
+        # 保存Word文档
+        doc.save(output_file)
+        print(f"转换完成，文件已保存至: {output_file}")
+
+def process_mermaid_diagrams(markdown_text, temp_dir):
+    """处理Markdown中的Mermaid图表，生成图片并替换为图片引用"""
+    # 使用正则表达式查找所有Mermaid代码块
+    mermaid_pattern = re.compile(
+        r'```mermaid\s*([\s\S]*?)\s*```', 
+        re.MULTILINE
+    )
+    
+    counter = 0
+    processed_text = markdown_text
+    
+    for match in mermaid_pattern.finditer(markdown_text):
+        mermaid_code = match.group(1)
+        counter += 1
+        
+        # 生成图片文件名
+        image_file = os.path.join(temp_dir, f'mermaid_{counter}.png')
+        
+        # 使用Mermaid CLI生成图表
+        try:
+            subprocess.run(
+                ['mmdc', '-i', '-', '-o', image_file, '-t', 'default'],
+                input=mermaid_code.encode('utf-8'),
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
             
-        # 处理代码块
-        if line.startswith('```'):
-            if in_code_block:
-                # 结束代码块
-                if code_lines:
-                    code_text = '\n'.join(code_lines)
-                    p = doc.add_paragraph(code_text)
-                    p.style = 'No Spacing'
-                    font = p.runs[0].font
-                    font.name = 'Consolas'
-                    font.size = Pt(10)
-                code_lines = []
-                in_code_block = False
+            # 验证图片是否生成成功
+            if os.path.exists(image_file):
+                # 调整图片大小（如果需要）
+                resize_image(image_file)
+                
+                # 替换Mermaid代码块为Markdown图片标记
+                image_markdown = f'![Mermaid图表]({image_file})'
+                processed_text = processed_text.replace(
+                    match.group(0), 
+                    image_markdown
+                )
             else:
-                # 开始代码块
-                in_code_block = True
-            continue
-        
-        if in_code_block:
-            code_lines.append(original_line)
+                print(f"警告: Mermaid图表生成失败，位置: {match.start()}")
+                # 替换为错误提示
+                error_markdown = f'[图表生成失败]'
+                processed_text = processed_text.replace(
+                    match.group(0), 
+                    error_markdown
+                )
+        except subprocess.CalledProcessError as e:
+            print(f"错误: 执行Mermaid CLI时出错: {e.stderr.decode('utf-8')}")
+            # 替换为错误提示
+            error_markdown = f'[图表生成失败: {e.stderr.decode("utf-8")}]'
+            processed_text = processed_text.replace(
+                match.group(0), 
+                error_markdown
+            )
+        except Exception as e:
+            print(f"错误: 生成Mermaid图表时出错: {e}")
+            # 替换为错误提示
+            error_markdown = f'[图表生成失败: {str(e)}]'
+            processed_text = processed_text.replace(
+                match.group(0), 
+                error_markdown
+            )
+    
+    return processed_text
+
+def resize_image(image_path, max_width=6.0):
+    """调整图片大小以适应Word文档"""
+    try:
+        with Image.open(image_path) as img:
+            # 计算新尺寸（保持宽高比）
+            width, height = img.size
+            if width > 600:  # 假设Word文档宽度约为6英寸，每英寸约100像素
+                ratio = max_width * 100 / width
+                new_width = int(width * ratio)
+                new_height = int(height * ratio)
+                
+                # 调整图片大小
+                resized_img = img.resize((new_width, new_height), Image.LANCZOS)
+                resized_img.save(image_path)
+    except Exception as e:
+        print(f"警告: 调整图片大小时出错: {e}")
+
+def convert_html_to_docx(soup, doc, temp_dir):
+    """将HTML内容转换为Word文档元素"""
+    for element in soup.body.children if soup.body else soup.children:
+        if element.name is None:
+            # 处理文本节点
+            if element.strip():
+                doc.add_paragraph(element.strip())
             continue
             
-        # 处理表格
-        if '|' in line and line.count('|') >= 2:
-            current_table.append(line)
-            continue
-        else:
-            # 如果有积累的表格，先处理表格
-            if current_table:
-                create_table_in_doc(doc, current_table)
-                current_table = []
-        
-        # 处理标题
-        if line.startswith('# '):
-            heading = doc.add_heading(line[2:], level=1)
-            heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        elif line.startswith('## '):
-            heading = doc.add_heading(line[3:], level=2)
-            heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        elif line.startswith('### '):
-            heading = doc.add_heading(line[4:], level=3)
-            heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        elif line.startswith('#### '):
-            heading = doc.add_heading(line[5:], level=4)
-            heading.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        elif line.startswith('- '):
-            # 列表项
-            p = doc.add_paragraph(line[2:], style='List Bullet')
-        elif line.startswith('* '):
-            # 列表项
-            p = doc.add_paragraph(line[2:], style='List Bullet')
-        elif line.startswith('**') and line.endswith('**'):
-            # 粗体段落
-            p = doc.add_paragraph()
-            run = p.add_run(line[2:-2])
-            run.bold = True
-        else:
-            # 普通段落
-            if line:
-                doc.add_paragraph(line)
+        if element.name == 'p':
+            # 处理段落
+            doc.add_paragraph(element.get_text())
+            
+        elif element.name == 'h1':
+            # 处理一级标题
+            doc.add_heading(element.get_text(), level=1)
+            
+        elif element.name == 'h2':
+            # 处理二级标题
+            doc.add_heading(element.get_text(), level=2)
+            
+        elif element.name == 'h3':
+            # 处理三级标题
+            doc.add_heading(element.get_text(), level=3)
+            
+        elif element.name == 'h4':
+            # 处理四级标题
+            doc.add_heading(element.get_text(), level=4)
+            
+        elif element.name == 'ul':
+            # 处理无序列表
+            for li in element.find_all('li'):
+                doc.add_paragraph(li.get_text(), style='List Bullet')
+                
+        elif element.name == 'ol':
+            # 处理有序列表
+            for li in element.find_all('li'):
+                doc.add_paragraph(li.get_text(), style='List Number')
+                
+        elif element.name == 'img':
+            # 处理图片
+            src = element.get('src')
+            if src and os.path.exists(src) and os.path.basename(src).startswith('mermaid_'):
+                # 添加Mermaid生成的图片
+                doc.add_picture(src, width=Inches(6))
+            else:
+                # 添加普通图片（如果有）
+                doc.add_paragraph(f"[图片: {src}]")
+                
+        elif element.name == 'pre':
+            # 处理代码块
+            if element.code:
+                code_text = element.code.get_text()
+                paragraph = doc.add_paragraph()
+                run = paragraph.add_run(code_text)
+                run.font.name = 'Consolas'  # 设置代码字体
+        # 可以根据需要添加更多元素类型的处理
+
+# if __name__ == "__main__":
+#     import argparse
     
-    # 处理剩余的表格
-    if current_table:
-        create_table_in_doc(doc, current_table)
+#     parser = argparse.ArgumentParser(description='将Markdown文件转换为Word文档，支持Mermaid图表')
+#     parser.add_argument('input', help='输入的Markdown文件路径')
+#     parser.add_argument('-o', '--output', help='输出的Word文件路径', default=None)
     
-    # 保存文档
-    doc.save(output_path)
+#     args = parser.parse_args()
+    
+#     # 确定输出文件路径
+#     if args.output:
+#         output_file = args.output
+#     else:
+#         base_name = os.path.splitext(args.input)[0]
+#         output_file = f"{base_name}.docx"
+    
+#     # 执行转换
+#     convert_markdown_to_word(args.input, output_file)    

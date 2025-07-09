@@ -1,6 +1,7 @@
 import re
 import time
 import requests
+from code.printf import printf
 
 # 配置部分
 DEEPSEEK_API_KEY = "sk-da3e2db4ed4b4f4384734af78174d570"  # 替换为你的DeepSeek API密钥
@@ -8,12 +9,9 @@ TRANSLATION_MODEL = "deepseek-chat"  # DeepSeek模型
 LANGUAGE = "中文"  # 目标语言
 API_ENDPOINT = "https://api.deepseek.com/v1/chat/completions"  # DeepSeek API端点
 
-"""
-智能分割Markdown文档，保持结构完整
-"""
 def split_markdown(content, max_length=3000):
     """
-    智能分割Markdown文档，保持结构完整
+    智能分割 Markdown 文档，保持结构完整
     """
     # 按双换行符分割
     parts = re.split(r'\n\s*\n', content)
@@ -36,12 +34,9 @@ def split_markdown(content, max_length=3000):
     
     return sections
 
-"""
-调用AI API翻译文本
-"""
 def translate_text_with_deepseek(text, max_retries=3):
     """
-    调用DeepSeek API翻译文本
+    调用 DeepSeek API 翻译文本
     """
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -53,7 +48,7 @@ def translate_text_with_deepseek(text, max_retries=3):
         "messages": [
             {
                 "role": "system",
-                "content": f"你是一名专业翻译，请将以下内容准确翻译成{LANGUAGE}，保留原有的格式和特殊标记。"
+                "content": f"你是一名专业翻译，请将以下内容准确翻译成 {LANGUAGE}，保留原有的格式和特殊标记。"
             },
             {
                 "role": "user",
@@ -73,7 +68,7 @@ def translate_text_with_deepseek(text, max_retries=3):
         except requests.exceptions.RequestException as e:
             if attempt == max_retries - 1:
                 raise Exception(f"DeepSeek API请求失败: {str(e)}")
-            print(f"翻译失败，重试 {attempt + 1}/{max_retries}: {str(e)}")
+            printf(f"翻译失败，重试 {attempt + 1}/{max_retries}: {str(e)}")
             time.sleep(5)  # 等待后重试
 
 def should_translate(text):
@@ -112,17 +107,17 @@ def should_translate(text):
     
     return True
 
-"""
-翻译指定内容
-"""
 def translate_markdown(content):
-    # 分割Markdown为多个部分（避免超过API token限制）
+    """
+    翻译指定 Markdown 内容
+    """
+    # 分割Markdown为多个部分（避免超过 API token 限制）
     sections = split_markdown(content)
     
     translated_sections = []
     for section in sections:
         if should_translate(section):
-            print(f"            正在翻译段落: {section[:50]}...")  # 打印前50字符便于调试
+            printf(f"正在翻译段落: {section[:50]}...")  # 打印前 50 字符便于调试
             translated = translate_text_with_deepseek(section)
             translated_sections.append(translated)
         else:
