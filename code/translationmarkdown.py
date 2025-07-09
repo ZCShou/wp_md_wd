@@ -115,7 +115,7 @@ def should_translate(text):
 """
 翻译指定内容
 """
-def translate_content(content):
+def translate_markdown(content):
     # 分割Markdown为多个部分（避免超过API token限制）
     sections = split_markdown(content)
     
