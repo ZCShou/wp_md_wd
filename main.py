@@ -84,7 +84,7 @@ def main():
                     os.makedirs(dst_dir, exist_ok=True)
                 
                 dst_path = dst_path.removesuffix('.md').removesuffix('.markdown') + '.docx' if dst_path.endswith(('.md', '.markdown')) else dst_path
-                pypandoc.convert_file(src_path, 'docx', outputfile=dst_path, filters=["mermaid-filter"], format='markdown')
+                pypandoc.convert_file(src_path, 'docx', outputfile=dst_path, format='markdown')
     printf(f"成功转换 {word_num} 个 Word 文件！")
 
 if __name__ == "__main__":
