@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-import requests
 import re
 import pandas as pd
 import pypandoc
@@ -23,27 +22,19 @@ def main():
         os.makedirs(dir_path, exist_ok=True)
 
     printf(f"\n开始提取 Excel 中的链接...")
-    try:
-        df = pd.read_excel('data/task.xlsx')
-        col_idx = sum((ord(c.upper()) - 64) * 26 ** i for i, c in enumerate(reversed('D'))) - 1
-        column_data = df.values[: , col_idx]
-        url_pattern = re.compile(r'https?://[^\s]+')
-        urls = {url for url in map(str, column_data) if url_pattern.match(url)}     # 这里将自动过滤重复的内容
-    except Exception as e:
-        printf(f"Error: {e}")
+    df = pd.read_excel('data/task.xlsx')
+    col_idx = sum((ord(c.upper()) - 64) * 26 ** i for i, c in enumerate(reversed('D'))) - 1
+    column_data = df.values[: , col_idx]
+    url_pattern = re.compile(r'https?://[^\s]+')
+    urls = {url for url in map(str, column_data) if url_pattern.match(url)}     # 这里将自动过滤重复的内容
     printf(f"成功获取 {len(urls)} 个 URL！")
     
     printf(f"\n开始依次提取 URL 页面内容...")
     markdown_num = 0
     for url in urls:
-        try:
-            printf(f"提取: {url}")
-            deepwiki2markdown(url, 'data/files_markdown')
-            markdown_num += 1
-        except requests.exceptions.RequestException as e: 
-            printf(f"请求错误: {e}")
-        except Exception as e:
-            printf(f"转换错误: {e}")
+        printf(f"提取: {url}")
+        deepwiki2markdown(url, 'data/files_markdown')
+        markdown_num += 1
     printf(f"成功提取 {markdown_num} 个 URL 页面内容！")
     
     printf(f"\n开始翻译 Markdown 文件...")
@@ -94,6 +85,7 @@ def main():
                     mermaid_filter = 'mermaid-filter'
                 pypandoc.convert_file(src_path, 'docx', outputfile=dst_path, filters=mermaid_filter, format='markdown')
                 printf(f"保存: {dst_path}")
+                word_num += 1
     printf(f"成功转换 {word_num} 个 Word 文件！")
 
 if __name__ == "__main__":
