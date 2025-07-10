@@ -12,3 +12,6 @@ build/
 
 # 处理的文件
 data/files_*
+
+# mermaid-filer
+mermaid-filter.err

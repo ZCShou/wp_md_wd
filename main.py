@@ -88,7 +88,11 @@ def main():
                 
                 printf(f"转换: {src_path}")
                 dst_path = dst_path.removesuffix('.md').removesuffix('.markdown') + '.docx' if dst_path.endswith(('.md', '.markdown')) else dst_path
-                pypandoc.convert_file(src_path, 'docx', outputfile=dst_path, format='markdown')
+                if os.name == 'nt':
+                    mermaid_filter = 'mermaid-filter.cmd'
+                else:
+                    mermaid_filter = 'mermaid-filter'
+                pypandoc.convert_file(src_path, 'docx', outputfile=dst_path, filters=mermaid_filter, format='markdown')
                 printf(f"保存: {dst_path}")
     printf(f"成功转换 {word_num} 个 Word 文件！")
 
