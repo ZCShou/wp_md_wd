@@ -286,10 +286,10 @@ def convert_sequence_svg_to_mermaid_text(svg_content):
     return "```mermaid\n" + "\n".join(mermaid_lines) + "\n```"
 
 def convert_class_svg_to_mermaid_text(svg_content):
-    return "暂不支持"
+    return "```mermaid\n暂不支持类图\n```"
 
 def convert_statediagram_svg_to_mermaid_text(svg_content):
-    return "暂不支持"
+    return "```mermaid\n暂不支持状态图\n```"
 
 def detect_code_language(code_text: str) -> str:
     """
