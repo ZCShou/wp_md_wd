@@ -244,7 +244,7 @@ def convert_flowchart_svg_to_mermaid_text(svg_content):
 
 def convert_sequence_svg_to_mermaid_text(svg_content):
     """
-    智能解析SVG序列图并转换为mermaid格式
+    解析 SVG 序列图并转换为 mermaid 格式
     
     参数:
         html_content: 包含SVG的HTML字符串
@@ -252,124 +252,111 @@ def convert_sequence_svg_to_mermaid_text(svg_content):
     返回:
         str: mermaid序列图文本
     """
-    # --------------------------
-    # 1. 提取参与者信息
-    # --------------------------
-    participants = {}
-    # 查找所有actor相关元素
-    for actor_g in svg_content.find_all('g'):
-        actor_rect = actor_g.find('rect', class_=re.compile(r'\bactor\b'))
-        if actor_rect:
-            actor_text = actor_g.find('text', class_=re.compile(r'\bactor\b'))
-            if actor_text:
-                actor_name = actor_text.get_text(strip=True).strip('"')
-                # 获取参与者的x坐标作为标识
-                x_pos = float(actor_text.get('x', 0))
-                participants[x_pos] = actor_name
-    
-    # 按x坐标排序参与者（从左到右）
-    sorted_participants = [participants[x] for x in sorted(participants.keys())]
-    
-    # --------------------------
-    # 2. 提取消息信息
-    # --------------------------
-    messages = []
-    # 查找所有消息线和对应的文本
-    message_elements = svg_content.find_all(lambda tag: 
-        (tag.name == 'line' or tag.name == 'path') and 
-        tag.get('class') and 
-        any('messageLine' in c for c in tag.get('class'))
-    )
-    
-    for msg_elem in message_elements:
-        # 尝试提取消息线的起点和终点坐标
-        if msg_elem.name == 'line':
-            x1 = float(msg_elem.get('x1', 0))
-            y1 = float(msg_elem.get('y1', 0))
-            x2 = float(msg_elem.get('x2', 0))
-            y2 = float(msg_elem.get('y2', 0))
-        elif msg_elem.name == 'path':
-            d = msg_elem.get('d', '')
-            # 提取路径的起点和终点（简化处理）
-            try:
-                parts = d.split()
-                if len(parts) < 2:
+    try:
+        soup = BeautifulSoup(svg_content, 'html.parser') if isinstance(svg_content, str) else svg_content
+        
+        # ===== 1. 提取唯一参与者 =====
+        participants = {}  # {actor_name: x_position}
+        actor_rects = {}  # 保存参与者矩形元素 {actor_name: rect_element}
+        actor_labels = set()  # 保存参与者标签文本元素
+        
+        # 先提取所有参与者
+        for g in soup.find_all('g'):
+            if rect := g.find('rect', class_=lambda x: x and 'actor' in x.lower()):
+                if text := (g.find('text', class_='label') or g.find('text')):
+                    try:
+                        x = float(rect.get('x', 0)) + float(rect.get('width', 0)) / 2
+                        actor_name = text.get_text(strip=True)
+                        # 只保留每个参与者的最左侧出现
+                        participants[actor_name] = x
+                        actor_rects[actor_name] = rect
+                        actor_labels.add(text)
+                    except (ValueError, AttributeError):
+                        continue
+        
+        if not participants:
+            return "错误：未识别到参与者"
+
+        # ===== 2. 处理消息线 =====
+        elements = []
+        used_texts = set()
+        
+        # 预处理所有非参与者标签的文本元素
+        texts = []
+        for text in soup.find_all('text'):
+            if text not in actor_labels:  # 排除参与者名称文本
+                try:
+                    texts.append({
+                        'x': float(text.get('x', 0)),
+                        'y': float(text.get('y', 0)),
+                        'text': text.get_text(strip=True),
+                        'element': text
+                    })
+                except (ValueError, AttributeError):
                     continue
-                # 起点
-                start = parts[1]
-                x1, y1 = map(float, start.split(','))
-                # 终点（取最后一个坐标点）
-                end = parts[-1]
-                x2, y2 = map(float, end.split(','))
-            except:
+        
+        # 辅助函数：查找最近的参与者
+        def find_actor(x_pos):
+            return min(participants.items(), key=lambda p: abs(p[1] - x_pos))[0]
+        
+        # 处理消息线
+        for elem in soup.find_all(['line', 'path'], class_=lambda x: x and 'message' in x.lower()):
+            try:
+                # 获取坐标
+                if elem.name == 'line':
+                    x1, y1 = float(elem.get('x1', 0)), float(elem.get('y1', 0))
+                    x2, y2 = float(elem.get('x2', 0)), float(elem.get('y2', 0))
+                else:  # path
+                    points = re.findall(r'([A-Za-z])\s*([\d\.]+)[,\s]*([\d\.]+)', elem.get('d', ''))
+                    if not points: continue
+                    x1, y1 = float(points[0][1]), float(points[0][2])
+                    x2, y2 = float(points[-1][1]), float(points[-1][2])
+                
+                sender = find_actor(x1)
+                receiver = find_actor(x2)
+                
+                # 查找最近的未使用文本（排除参与者标签）
+                mid_y = (y1 + y2) / 2
+                closest_text = min(
+                    (t for t in texts if t['element'] not in used_texts),
+                    key=lambda t: abs(t['y'] - mid_y) + 0.3 * abs(t['x'] - (x1 + x2)/2),
+                    default=None
+                )
+                
+                if closest_text:
+                    if sender == receiver:  # 自调用
+                        elements.append((mid_y, f"{sender}->>{sender}: {closest_text['text']}"))
+                    else:
+                        elements.append((mid_y, f"{sender}->>{receiver}: {closest_text['text']}"))
+                    used_texts.add(closest_text['element'])
+            except Exception:
                 continue
         
-        # 找到最近的参与者作为发送者和接收者
-        sender_x = min(participants.keys(), key=lambda x: abs(x - x1))
-        receiver_x = min(participants.keys(), key=lambda x: abs(x - x2))
-        sender = participants[sender_x]
-        receiver = participants[receiver_x]
+        # 处理剩余文本作为注释
+        for text in (t for t in texts if t['element'] not in used_texts):
+            try:
+                actor = find_actor(text['x'])
+                elements.append((text['y'], f"note over {actor}: {text['text']}"))
+            except Exception:
+                continue
         
-        # 查找最接近的消息文本
-        closest_text = None
-        closest_distance = float('inf')
-        for text_elem in svg_content.find_all('text', class_='messageText'):
-            text_y = float(text_elem.get('y', 0))
-            distance = abs(text_y - ((y1 + y2) / 2))  # 比较与消息线中点的y距离
-            if distance < closest_distance:
-                closest_distance = distance
-                closest_text = text_elem.get_text(strip=True)
+        # ===== 3. 生成Mermaid代码 =====
+        mermaid = ["sequenceDiagram"]
+        # 按x坐标排序参与者
+        for actor, _ in sorted(participants.items(), key=lambda x: x[1]):
+            mermaid.append(f"    participant {actor}")
         
-        if closest_text:
-            messages.append((y1, f"{sender}->>{receiver}: {closest_text}"))
+        # 按垂直位置排序元素
+        for _, elem in sorted(elements, key=lambda x: x[0]):
+            mermaid.append(f"    {elem}")
+        
+        return "```mermaid\n" + "\n".join(mermaid) + "\n```"
     
-    # 按y坐标排序消息（确保时序正确）
-    messages.sort(key=lambda x: x[0])
-    messages = [msg for _, msg in messages]
-    
-    # --------------------------
-    # 3. 提取注释信息
-    # --------------------------
-    notes = []
-    for note_g in svg_content.find_all('g'):
-        note_rect = note_g.find('rect', class_='note')
-        if note_rect:
-            note_text = note_g.find('text', class_='noteText')
-            if note_text:
-                note_content = note_text.get_text(strip=True)
-                note_x = float(note_rect.get('x', 0)) + float(note_rect.get('width', 0)) / 2
-                note_y = float(note_text.get('y', 0))
-                
-                # 找到最近的参与者
-                closest_actor_x = min(participants.keys(), key=lambda x: abs(x - note_x))
-                target_actor = participants[closest_actor_x]
-                
-                # 判断注释位置（左或右）
-                position = "right of" if note_x > closest_actor_x else "left of"
-                notes.append((note_y, f"note {position} {target_actor}: {note_content}"))
-    
-    # 按y坐标排序注释
-    notes.sort(key=lambda x: x[0])
-    notes = [note for _, note in notes]
-    
-    # --------------------------
-    # 4. 组合生成mermaid文本
-    # --------------------------
-    mermaid_lines = ["sequenceDiagram"]
-    # 添加参与者
-    for actor in sorted_participants:
-        mermaid_lines.append(f"    participant {actor}")
-    
-    # 合并并排序所有元素（注释和消息）
-    all_elements = notes + messages
-    # 使用启发式方法确定元素顺序（基于y坐标和类型）
-    all_elements.sort(key=lambda x: (x.startswith("note "), x))
-    
-    # 添加所有元素
-    for elem in all_elements:
-        mermaid_lines.append(f"    {elem}")
-    
-    return "```mermaid\n" + "\n".join(mermaid_lines) + "\n```"
+    except Exception as e:
+        return f"转换错误: {str(e)}"
+
+
+
 
 def convert_class_svg_to_mermaid_text(svg_content):
     return "```mermaid\n暂不支持类图\n```"
