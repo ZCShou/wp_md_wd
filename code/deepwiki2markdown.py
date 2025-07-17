@@ -42,16 +42,15 @@ def convert_flowchart_svg_to_mermaid_text(svg_content):
             
             nodes[base_id] = text
             id_map[original_id] = base_id
+        
         # 2. 提取所有集群（保持原始结构）
         clusters = {}
+        cluster_id = 0
         for cluster in svg_content.select('g.cluster'):
-            cluster_id = cluster.get('id', '')
-            if not cluster_id.startswith('subGraph'):
-                continue
-                
+            cluster_id += 1
             # 提取集群标题
             label = cluster.select_one('.cluster-label')
-            title = cluster_id.replace('subGraph', 'cluster_')
+            title = None
             if label:
                 foreign = label.select_one('foreignObject div')
                 if foreign:
